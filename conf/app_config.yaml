@@ -33,12 +33,14 @@ embedding:
   port: 8081
   model: BAAI/bge-large-zh-v1.5
 
+
 es:
   host: localhost
   port: 9200
   index_name: data_agent
 
+
 llm:
   model_name: gpt-5.2-codex
-  api_key: <api_key>
+  api_key: <api-key>
   base_url: https://api.openai-proxy.org/v1
