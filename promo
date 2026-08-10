@@ -1,0 +1,586 @@
+你需要设计并实现一个 Agent Runtime 中的 Parameter Engine（参数解析引擎）。
+
+背景：
+当前系统是一个 Enterprise AI Assistant Runtime，用户通过聊天窗口调用不同 Skill。
+
+架构：
+
+User
+ |
+Chat UI
+ |
+Agent Runtime
+ |
+Planner
+ |
+Skill Runtime
+ |
+Parameter Engine
+ |
+Validator
+ |
+Tool/MCP
+ |
+External Service
+
+
+其中 Skill 负责描述能力，例如：
+
+- 云资源申请
+- 云计费查询
+- Kubernetes 运维
+- Jira 操作
+
+Skill 不负责参数收集逻辑。
+
+
+目标：
+实现一个通用 Parameter Engine，可以被所有 Skill 复用。
+
+
+核心要求：
+
+1. Schema 驱动
+
+Skill 通过 manifest 或 MCP describe 接口提供参数定义。
+
+参数定义主要来源：
+
+- JSON Schema
+- Skill manifest
+- MCP resource schema
+
+
+例如：
+
+{
+  "resourceType": "gke",
+
+  "properties": {
+
+    "project": {
+      "type": "string",
+      "description": "GCP Project ID"
+    },
+
+    "region": {
+      "type": "string",
+      "enum": [
+        "asia-east1",
+        "us-central1"
+      ]
+    },
+
+    "resourceContent": {
+      "type": "object",
+      "properties": {
+
+        "nodePool": {
+          "type": "object",
+          "properties": {
+
+            "machineType": {
+              "type": "string"
+            },
+
+            "count": {
+              "type": "integer"
+            }
+
+          }
+        }
+
+      }
+    }
+
+  }
+}
+
+
+Parameter Engine 必须支持：
+
+- 简单字段
+- 嵌套 object
+- array
+- enum
+- optional field
+- required field
+
+
+---
+
+2. 参数状态管理（Parameter State）
+
+
+不要依赖 conversation history 判断参数。
+
+
+需要维护独立 Task Parameter State。
+
+
+例如：
+
+{
+  "task_id": "xxx",
+
+  "skill": "create_gke",
+
+  "status": "collecting",
+
+  "parameters": {
+
+      "project": "prod-project",
+
+      "region": null,
+
+      "resourceContent": {
+
+          "nodePool": {
+
+              "machineType": null,
+
+              "count": 3
+
+          }
+
+      }
+
+  }
+
+}
+
+
+每轮用户输入：
+
+必须：
+
+User Message
++
+Current Parameter State
++
+JSON Schema
+
+共同参与参数解析。
+
+
+---
+
+3. 支持一句话提供多个参数
+
+
+例如：
+
+用户：
+
+"帮我在 prod-project 创建东京区域生产 GKE，3 个节点，普通业务"
+
+
+LLM 应该根据 Schema 自动提取：
+
+{
+ "project":"prod-project",
+
+ "region":"asia-northeast1",
+
+ "resourceContent":{
+    "nodePool":{
+       "count":3,
+       "machineType":"e2-standard-4"
+    }
+ }
+}
+
+
+然后执行：
+
+Parameter Merge
+
+
+---
+
+4. 支持多轮参数收集
+
+
+例如：
+
+用户：
+
+"创建一个 GKE"
+
+
+Schema:
+
+required:
+
+project
+region
+resourceContent.nodePool.count
+
+
+Parameter Engine：
+
+计算：
+
+missing fields:
+
+[
+ "project",
+ "region",
+ "resourceContent.nodePool.count"
+]
+
+
+不要一次询问所有字段。
+
+
+需要设计：
+
+Question Generation Strategy
+
+
+根据：
+
+- 字段重要性
+- 是否用户容易理解
+- 是否可以自动推断
+- 是否可以通过 Tool 获取
+
+
+生成自然语言问题。
+
+
+例如：
+
+不要：
+
+"请输入 machineType"
+
+
+应该：
+
+"你的集群主要运行什么业务？"
+
+选项：
+
+1. 普通 Web 服务
+2. 数据分析
+3. AI 计算
+
+
+然后映射：
+
+普通 Web 服务:
+machineType=e2-standard-4
+
+
+---
+
+5. LLM 的职责
+
+
+LLM 用于：
+
+1. 用户意图理解
+
+2. 从自然语言提取参数
+
+3. 参数语义转换
+
+4. 根据 schema 生成问题
+
+5. 根据业务含义推断默认值
+
+
+例如：
+
+用户：
+
+"普通业务"
+
+
+LLM：
+
+根据 metadata 推断：
+
+{
+ machineType:"e2-standard-4"
+}
+
+
+LLM 不负责：
+
+- required 校验
+- 类型检查
+- enum 校验
+- regex 校验
+- API 调用
+
+
+这些必须由代码实现。
+
+
+---
+
+6. 参数来源 Resolver
+
+
+设计 Parameter Resolver。
+
+
+每个字段支持不同来源：
+
+
+fixed:
+
+系统固定参数
+
+
+例如：
+
+environment=prod
+
+
+enum:
+
+用户选择
+
+
+例如：
+
+region
+
+
+tool:
+
+通过 Tool 获取
+
+
+例如：
+
+projectId:
+
+调用：
+
+get_current_project()
+
+
+user:
+
+需要用户输入
+
+
+例如：
+
+业务描述
+
+
+inference:
+
+LLM 推理生成
+
+
+例如：
+
+machineType
+
+
+字段定义：
+
+{
+ "name":"project",
+
+ "source":"tool",
+
+ "resolver":"get_project"
+}
+
+
+---
+
+7. Validator
+
+
+参数完成后：
+
+执行 Schema Validation。
+
+
+支持：
+
+- required
+- type
+- enum
+- min/max
+- pattern
+- nested object
+
+
+如果失败：
+
+返回结构化错误：
+
+{
+ "field":"nodeCount",
+
+ "error":"must be greater than 0"
+}
+
+
+交给 LLM 转成人类语言。
+
+
+---
+
+8. ResourceContent 特殊处理
+
+
+resourceContent 是动态结构。
+
+
+不能提前写死代码。
+
+
+需要：
+
+JSON Schema Parser
+
+
+动态生成：
+
+Parameter Tree
+
+
+例如：
+
+resourceContent.nodePool.machineType
+
+resourceContent.nodePool.count
+
+
+统一进入 Parameter State。
+
+
+最终生成：
+
+MCP request:
+
+{
+ resourceType:"gke",
+
+ resourceContent:{
+    nodePool:{
+       machineType:"e2-standard-4",
+       count:3
+    }
+ }
+}
+
+
+---
+
+9. Parameter Engine 内部模块设计
+
+
+请设计如下模块：
+
+
+ParameterEngine
+
+负责整体流程
+
+
+SchemaParser
+
+负责解析 JSON Schema
+
+
+ParameterStateManager
+
+负责保存和更新参数状态
+
+
+LLMParameterExtractor
+
+负责自然语言参数提取
+
+
+ParameterMerger
+
+负责合并历史参数和新参数
+
+
+ParameterResolver
+
+负责：
+
+- fixed resolver
+- tool resolver
+- enum resolver
+- inference resolver
+
+
+Validator
+
+负责参数校验
+
+
+QuestionGenerator
+
+负责生成下一轮用户问题
+
+
+RequestBuilder
+
+负责生成 MCP Request
+
+
+
+---
+
+10. 技术要求
+
+
+使用 Python 实现。
+
+要求：
+
+- 模块化设计
+- 清晰职责边界
+- 支持异步调用
+- 支持 LangGraph Runtime 集成
+- 不要把 Parameter Engine 实现成 Agent
+- 不要为每个 Skill 编写独立参数收集代码
+
+
+请提供：
+
+1. 整体架构设计
+
+2. Python 项目目录结构
+
+3. 核心 Class 设计
+
+4. State Model 设计
+
+5. LangGraph 集成方式
+
+6. 示例：
+
+create_gke Skill
+
+完整展示：
+
+用户输入
+
+参数解析
+
+多轮收集
+
+校验
+
+MCP 请求生成
+
+
+目标：
+
+实现一个类似 Claude/Copilot 的参数理解和补全能力，而不是传统表单式参数填写。
