@@ -1,0 +1,1534 @@
+你现在需要对当前 Agent Runtime 项目进行一次架构分析，并设计一份可以实际执行的重构/迁移方案。
+
+不要立即修改代码。
+
+第一阶段只分析当前代码、现有架构和数据流，然后输出一份详细的 IMPLEMENTATION PLAN。
+确认方案后，再按照 Phase 分阶段实施。
+
+==================================================
+一、项目背景
+==================================================
+
+当前系统是一个通用 Agent Runtime。
+
+目标不是只做云资源申请，而是构建一个类似：
+
+- GitHub Copilot
+- Claude Code
+- OpenClaw/龙虾类 Agent
+
+的通用 Agent Runtime。
+
+系统通过 Skill 扩展能力，例如：
+
+- 云资源申请
+- 运维知识库查询
+- 云计费查询
+- Kubernetes 运维
+- Jira
+- 其他企业内部能力
+
+系统核心链路：
+
+User
+  ↓
+Planner
+  ↓
+Skill / Task
+  ↓
+Parameter Engine（如果 Skill 需要参数）
+  ↓
+Skill Executor
+  ↓
+Tool / MCP
+  ↓
+Result
+
+
+其中 Parameter Engine 是 Runtime 的通用基础能力。
+
+==================================================
+二、核心架构原则
+==================================================
+
+必须遵守下面的职责边界。
+
+-----------------------------------------------
+1. Planner
+-----------------------------------------------
+
+Planner 负责：
+
+- 理解用户当前意图
+- 判断是否创建/继续/暂停/恢复 Task
+- 选择 Skill
+- 判断是否切换 Skill
+- 判断当前 Task 是否应该继续
+- 将需要参数的 Skill 交给 Parameter Engine
+- 根据 Parameter Engine 的结果决定下一步 Runtime Action
+
+Planner 不负责：
+
+- 一个个参数怎么收集
+- 参数 required 判断
+- JSON Schema 校验
+- 参数 merge
+- LLM 参数 extraction
+- 直接调用 ToolManager
+- 为具体资源类型编写 if/else 参数流程
+
+核心原则：
+
+Planner 决定：
+
+    “做什么”
+
+Parameter Engine 决定：
+
+    “为了做这个事情，还缺什么参数，以及如何补全”
+
+
+-----------------------------------------------
+2. Parameter Engine
+-----------------------------------------------
+
+Parameter Engine 是 Runtime 内置能力。
+
+它不是 Skill。
+
+它也不是一个独立 Agent。
+
+它负责：
+
+- 参数 Schema 解析
+- 用户自然语言参数提取
+- 多参数同时提取
+- 多轮参数补全
+- 参数 State 管理
+- 参数 Merge
+- Resolver
+- Schema Validation
+- Missing Parameter Detection
+- Question Generation
+- 参数完成判断
+- Request 参数 materialization
+
+核心原则：
+
+Parameter Engine 不区分：
+
+- base parameters
+- resourceContent parameters
+
+它只看到一个统一的 Parameter Tree。
+
+
+-----------------------------------------------
+3. Skill
+-----------------------------------------------
+
+Skill 描述能力。
+
+例如：
+
+create_gke
+
+billing_query
+
+k8s_diagnose
+
+jira_create_issue
+
+Skill 提供：
+
+- Skill metadata
+- Parameter Schema
+- Tool/MCP binding
+- 必要的 resolution metadata
+- execution metadata
+
+Skill 不实现：
+
+- 多轮参数收集流程
+- 参数问答循环
+- Planner 路由
+- InteractionRequest 创建
+
+
+-----------------------------------------------
+4. InteractionRequest
+-----------------------------------------------
+
+InteractionRequest 必须保留。
+
+但是它不能再承担 Parameter Engine 的职责。
+
+InteractionRequest 是一个通用的 Human-in-the-Loop / UI Interaction 协议。
+
+它负责表达：
+
+“Runtime 需要用户做什么交互。”
+
+例如：
+
+parameter_input
+
+confirmation
+
+selection
+
+clarification
+
+authorization
+
+approval
+
+等等。
+
+Parameter Engine 产生：
+
+ParameterTurnResult
+
+其中可以包含：
+
+InteractionIntent
+
+然后由 Runtime / Interaction Manager 将 InteractionIntent 转换为：
+
+InteractionRequest
+
+最终发送给 UI。
+
+
+==================================================
+三、最终推荐数据流
+==================================================
+
+
+                    User
+                      ↓
+                   Planner
+                      ↓
+                Select Skill
+                      ↓
+             ┌─────────────────┐
+             │ ParameterEngine │
+             └────────┬────────┘
+                      ↓
+          ParameterTurnResult
+                      ↓
+             ┌────────┴────────┐
+             │                 │
+          COMPLETE          NEED_INPUT
+             │                 │
+             ↓                 ↓
+        Skill Executor    InteractionIntent
+             │                 ↓
+             ↓          Interaction Manager
+          Tool/MCP             ↓
+             │        InteractionRequest
+             ↓                 ↓
+           Result              UI
+                               ↓
+                             User
+                               ↓
+                         Resume Task
+                               ↓
+                       Parameter Engine
+
+
+重要：
+
+Parameter Engine 不直接控制 UI。
+
+Parameter Engine 不直接创建 InteractionRequest。
+
+Parameter Engine 返回“需要什么交互”。
+
+Runtime 再负责将它转换成 InteractionRequest。
+
+
+==================================================
+四、Parameter Definition 必须只有一个 Source of Truth
+==================================================
+
+当前项目中如果存在：
+
+SkillParameterProfile
+RequestBuilderProfile
+Skill Manifest parameters
+JSON Schema parameters
+
+必须重点检查是否存在参数定义重复。
+
+必须避免：
+
+Manifest 定义一份参数
+
+Profile 又定义一份参数
+
+Parameter Engine 又维护一份参数
+
+这种设计。
+
+最终必须保证：
+
+Parameter Definition = Single Source of Truth
+
+
+例如：
+
+Skill Manifest：
+
+parameters:
+  project:
+    type: string
+    required: true
+
+  region:
+    type: string
+    required: true
+
+  resourceContent:
+    type: object
+
+
+这里定义：
+
+- name
+- type
+- required
+- enum
+- description
+- schema
+- aliases 等参数 metadata
+
+
+==================================================
+五、SkillParameterProfile 的重新定位
+==================================================
+
+如果当前代码已经存在：
+
+SkillParameterProfile
+
+不要直接删除。
+
+先分析它的实际用途。
+
+如果它当前重复定义：
+
+- parameter name
+- type
+- required
+- enum
+- schema
+
+必须重构。
+
+推荐改成：
+
+ParameterResolutionPolicy
+
+或者保留名字，但严格限制职责。
+
+Profile 不允许成为第二套 Parameter Definition。
+
+它只能描述：
+
+“参数如何被解析/获得。”
+
+例如：
+
+project:
+  strategy: context
+
+network:
+  strategy: tool
+  resolver: get_default_network
+
+machineType:
+  strategy: llm_inference
+
+region:
+  strategy: user
+
+
+因此：
+
+Parameter Definition：
+
+“这个参数是什么？”
+
+Resolution Policy：
+
+“这个参数怎么获得？”
+
+两者必须分离。
+
+
+==================================================
+六、Parameter Source / Resolver
+==================================================
+
+Parameter Engine 应支持多种参数来源。
+
+
+1. fixed
+
+例如：
+
+environment = prod
+
+
+2. context
+
+例如：
+
+current_project
+
+current_user
+
+current_tenant
+
+
+3. tool
+
+例如：
+
+get_default_project()
+
+get_default_network()
+
+
+4. user
+
+用户直接提供。
+
+
+5. enum
+
+用户从合法枚举中选择。
+
+
+6. llm_inference
+
+LLM 根据业务语义推断。
+
+例如：
+
+用户：
+
+“普通 Web 服务”
+
+可能推断：
+
+machineType = e2-standard-4
+
+
+但是：
+
+LLM 不负责最终安全校验。
+
+最终必须经过 Validator。
+
+
+==================================================
+七、LLM 在 Parameter Engine 中的职责
+==================================================
+
+必须使用 LLM，但不能让 LLM 负责整个 Parameter Engine。
+
+LLM 负责：
+
+1. 从自然语言提取参数
+
+例如：
+
+“在 prod-project 的东京创建一个生产 GKE，3 个节点”
+
+提取：
+
+project = prod-project
+region = asia-northeast1
+environment = prod
+nodeCount = 3
+
+
+2. 参数语义理解
+
+例如：
+
+“东京”
+
+→ asia-northeast1
+
+
+3. 业务语义推断
+
+例如：
+
+“普通 Web 服务”
+
+→ 推荐机器规格
+
+
+4. 生成自然语言问题
+
+
+5. 根据字段 description/examples/aliases 生成用户容易理解的问题
+
+
+LLM 不负责：
+
+- required validation
+- type validation
+- enum validation
+- regex validation
+- min/max validation
+- 最终请求合法性判断
+
+
+这些必须由 deterministic code 完成。
+
+
+==================================================
+八、Alias 的定位
+==================================================
+
+Alias 是辅助能力。
+
+不是 Parameter Definition 的核心来源。
+
+普通字段：
+
+project
+region
+environment
+
+不需要大量配置 alias。
+
+只有：
+
+- 企业内部术语
+- 缩写
+- 黑话
+- 专业术语
+- LLM 容易误判的字段
+
+才配置 alias。
+
+
+例如：
+
+project:
+  aliases:
+    - 项目号
+    - 工程号
+    - GCP项目
+
+
+alias 只是帮助 LLM mapping。
+
+不能把整个系统设计成 synonym dictionary。
+
+
+==================================================
+九、Base Parameter 和 resourceContent
+==================================================
+
+当前资源申请 Skill 有：
+
+Base Parameters
+
+以及：
+
+resourceContent
+
+
+Base Parameters 例如：
+
+project
+region
+environment
+resourceName
+
+resourceContent 来自 MCP 提供的动态 JSON Schema。
+
+
+必须统一处理。
+
+
+例如：
+
+Base Schema：
+
+project
+region
+environment
+
+
+MCP Resource Schema：
+
+resourceContent
+  └── nodePool
+       ├── machineType
+       └── count
+
+
+Parameter Engine 最终构建：
+
+Unified Parameter Tree
+
+project
+region
+environment
+
+resourceContent
+  └── nodePool
+       ├── machineType
+       └── count
+
+
+不要实现：
+
+BaseParameterEngine
+
+ResourceContentParameterEngine
+
+两个独立系统。
+
+
+==================================================
+十、支持一句话多个字段
+==================================================
+
+必须支持：
+
+用户：
+
+“帮我在 prod-project 创建东京生产 GKE，3 个节点，普通业务。”
+
+
+一次 LLM extraction 可以得到：
+
+{
+  "project": "prod-project",
+  "region": "asia-northeast1",
+  "environment": "prod",
+  "resourceContent": {
+    "nodePool": {
+      "count": 3,
+      "machineType": "..."
+    }
+  }
+}
+
+
+然后：
+
+Merge
+↓
+Validate
+↓
+Missing Detection
+
+
+不能设计成：
+
+一个用户消息只能填一个字段。
+
+
+==================================================
+十一、多轮参数收集
+==================================================
+
+必须支持：
+
+第一轮：
+
+用户：
+
+“创建一个 GKE”
+
+
+Parameter State：
+
+project = null
+region = null
+nodeCount = null
+
+
+Parameter Engine：
+
+发现缺少：
+
+project
+region
+nodeCount
+
+
+生成：
+
+“使用哪个项目？”
+
+
+第二轮：
+
+用户：
+
+“prod-project”
+
+
+Parameter Engine：
+
+Merge：
+
+project = prod-project
+
+
+继续发现：
+
+region
+nodeCount
+
+
+然后继续提问。
+
+
+但是下一轮用户可以一次提供多个字段：
+
+“东京，5 个节点”
+
+
+一次提取：
+
+region = asia-northeast1
+nodeCount = 5
+
+
+最终完成。
+
+
+核心原则：
+
+不要实现“字段问答流程”。
+
+实现：
+
+Parameter State Progressive Completion。
+
+
+==================================================
+十二、Parameter State
+==================================================
+
+必须维护独立 Task Parameter State。
+
+不能依赖 LLM 每次重新阅读 conversation history 判断当前参数状态。
+
+
+例如：
+
+{
+  "task_id": "...",
+  "skill": "create_gke",
+  "status": "collecting",
+
+  "parameters": {
+    "project": "prod-project",
+    "region": "asia-northeast1",
+
+    "resourceContent": {
+      "nodePool": {
+        "count": 3
+      }
+    }
+  }
+}
+
+
+每轮输入：
+
+User Message
++
+Current Parameter State
++
+Parameter Schema
++
+Relevant Task Context
+
+
+得到：
+
+ParameterTurnResult。
+
+
+==================================================
+十三、ParameterTurnResult
+==================================================
+
+设计一个稳定的 Contract。
+
+
+例如：
+
+ParameterTurnResult：
+
+status:
+
+- collecting
+- ready
+- paused
+- cancelled
+- failed
+
+
+包含：
+
+state
+
+missing_parameters
+
+validation_errors
+
+extracted_parameters
+
+interaction_intent
+
+request
+
+
+例如：
+
+{
+  "status": "collecting",
+
+  "state": {},
+
+  "missing_parameters": [
+    "region"
+  ],
+
+  "interaction_intent": {
+    "type": "parameter_input",
+    "field": "region",
+    "prompt": "请选择部署区域"
+  }
+}
+
+
+==================================================
+十四、InteractionIntent 与 InteractionRequest
+==================================================
+
+Parameter Engine 不应该直接创建 InteractionRequest。
+
+Parameter Engine 返回：
+
+InteractionIntent
+
+
+例如：
+
+{
+  "type": "parameter_input",
+
+  "field": "region",
+
+  "prompt": "请选择部署区域",
+
+  "input_schema": {
+    "type": "string",
+    "enum": [
+      "asia-northeast1",
+      "asia-east1"
+    ]
+  }
+}
+
+
+Runtime Interaction Manager 再创建：
+
+InteractionRequest。
+
+
+InteractionRequest 是系统级通用交互协议。
+
+
+==================================================
+十五、InteractionRequest 支持范围
+==================================================
+
+至少支持：
+
+parameter_input
+
+selection
+
+confirmation
+
+clarification
+
+authorization
+
+approval
+
+
+Parameter Engine 主要使用：
+
+parameter_input
+
+selection
+
+clarification
+
+
+但其他 Skill 可以使用：
+
+confirmation
+authorization
+approval
+
+
+所以不要让 InteractionRequest 和 Parameter Engine 强耦合。
+
+
+==================================================
+十六、Planner 与 Parameter Engine 的边界
+==================================================
+
+Planner：
+
+“用户想做什么？”
+
+Parameter Engine：
+
+“完成这个事情还缺什么参数？”
+
+
+例如：
+
+用户：
+
+“创建 GKE”
+
+Planner：
+
+skill = create_gke
+
+
+Parameter Engine：
+
+missing = project, region, resourceContent...
+
+
+下一轮：
+
+用户：
+
+“查一下这个月账单”
+
+
+Planner 必须重新判断：
+
+这是新的 Billing Task。
+
+
+不能让 Parameter Engine 自己切换 Skill。
+
+
+因此：
+
+Parameter Engine 不负责 Intent Routing。
+
+
+==================================================
+十七、Task 与 Parameter Collection
+==================================================
+
+参数收集必须属于一个 Task。
+
+例如：
+
+Task A：
+
+create_gke
+
+
+状态：
+
+collecting
+
+
+用户突然：
+
+“帮我查一下这个月账单”
+
+
+Planner 创建：
+
+Task B：
+
+billing_query
+
+
+Task A：
+
+paused
+
+
+Task B：
+
+执行。
+
+
+用户之后：
+
+“继续刚才的 GKE”
+
+Planner：
+
+resume Task A
+
+
+Parameter Engine：
+
+恢复 Task A 的 Parameter State。
+
+
+因此：
+
+Task State
+和
+Parameter State
+
+必须能够独立持久化。
+
+
+==================================================
+十八、RequestBuilder
+==================================================
+
+RequestBuilder 只负责：
+
+ParameterState
++
+Skill Definition
++
+Resolver Result
+
+↓
+
+最终 Tool/MCP Request
+
+
+不要让 RequestBuilder 再定义一套参数。
+
+
+例如：
+
+Parameter State：
+
+{
+  project: "prod",
+  region: "asia-northeast1",
+  resourceContent: {...}
+}
+
+
+RequestBuilder：
+
+↓
+
+MCP Request
+
+
+如果某个具体 MCP 存在特殊 request format：
+
+使用 Adapter。
+
+
+不要通过：
+
+RequestBuilderProfile
+
+重新定义参数。
+
+
+==================================================
+十九、推荐模块结构
+==================================================
+
+请根据当前项目实际情况分析后，尽量向以下逻辑靠拢：
+
+parameter_resolution/
+
+    engine.py
+
+    state.py
+
+    schema.py
+
+    extraction.py
+
+    resolver.py
+
+    merge.py
+
+    validator.py
+
+    question.py
+
+    request_builder.py
+
+    contracts.py
+
+
+interaction/
+
+    manager.py
+
+    contracts.py
+
+    security.py
+
+
+planner/
+
+    planner.py
+
+    parameters.py
+
+
+skill/
+
+    registry.py
+
+    manifest.py
+
+
+注意：
+
+以上只是逻辑参考。
+
+不要机械创建目录。
+
+必须先检查现有项目结构。
+
+如果现有模块已经承担类似职责，应优先重构/复用，而不是重复创建。
+
+
+==================================================
+二十、必须重点检查当前项目
+==================================================
+
+请重点搜索和分析：
+
+- ParameterEngine
+- DefaultParameterCollector
+- SkillParameterProfile
+- RequestBuilderProfile
+- ParameterTurnContext
+- ParameterTurnResult
+- InteractionRequest
+- PublicInteraction
+- InteractionIntent
+- SkillManifestParameter
+- SchemaParser
+- Validator
+- QuestionGenerator
+- RequestBuilder
+- Planner
+- Dispatcher
+- TaskState
+- Checkpointer
+- ToolManager
+- MCP Client
+
+
+建立当前架构关系图：
+
+谁创建谁？
+
+谁调用谁？
+
+谁持有 State？
+
+谁负责 Parameter？
+
+谁负责 Interaction？
+
+谁负责 Tool？
+
+谁负责 MCP？
+
+
+==================================================
+二十一、必须识别重复职责
+==================================================
+
+重点检查：
+
+1. 是否存在多个 Parameter Definition。
+
+2. Skill Manifest 与 SkillParameterProfile 是否重复。
+
+3. resourceContent Schema 是否被重复建模。
+
+4. RequestBuilderProfile 是否重复定义 request 参数。
+
+5. Planner 是否包含参数收集业务逻辑。
+
+6. InteractionRequest 是否承担了参数收集逻辑。
+
+7. DefaultParameterCollector 是否和 ParameterEngine 重复。
+
+8. 是否存在 Cloud SQL / GKE / PubSub 等 resource-specific if/else。
+
+9. 是否存在 Skill-specific Parameter Collector。
+
+10. 是否存在重复的 State。
+
+
+==================================================
+二十二、必须避免的架构
+==================================================
+
+禁止：
+
+Planner：
+
+if resourceName == "Cloud SQL":
+    ...
+
+
+禁止：
+
+Skill：
+
+if missing project:
+    ask_project()
+
+
+禁止：
+
+Parameter Engine：
+
+if resource_type == "gke":
+    ...
+
+
+禁止：
+
+Profile：
+
+重新定义：
+
+project
+region
+required
+enum
+type
+
+
+禁止：
+
+RequestBuilder：
+
+自己维护 parameter schema。
+
+
+禁止：
+
+InteractionRequest：
+
+直接负责参数收集流程。
+
+
+==================================================
+二十三、最终目标架构
+==================================================
+
+
+                    USER
+                     │
+                     ↓
+                  PLANNER
+                     │
+                     │ Select Skill / Task
+                     ↓
+                 SKILL
+                     │
+                     │ Parameter Schema
+                     ↓
+           PARAMETER ENGINE
+                     │
+        ┌────────────┼─────────────┐
+        ↓            ↓             ↓
+    LLM Extract   Resolver      Validator
+        │            │             │
+        └────────────┼─────────────┘
+                     ↓
+              Parameter State
+                     │
+                     ↓
+              Missing / Ready
+                 │       │
+                 │       └──────────────→ RequestBuilder
+                 │                              ↓
+                 │                             MCP
+                 │
+                 ↓
+          InteractionIntent
+                 ↓
+        Interaction Manager
+                 ↓
+       InteractionRequest
+                 ↓
+                  UI
+                 ↓
+                USER
+                 ↓
+           Resume Task
+                 ↓
+          Parameter Engine
+
+
+==================================================
+二十四、实施要求
+==================================================
+
+请不要一次性修改所有代码。
+
+先输出：
+
+PHASE 0：
+
+当前架构审计。
+
+
+PHASE 1：
+
+Parameter Definition / Schema 统一。
+
+
+PHASE 2：
+
+Parameter State / Parameter Engine。
+
+
+PHASE 3：
+
+LLM Extraction + Resolver。
+
+
+PHASE 4：
+
+InteractionIntent / InteractionRequest 解耦。
+
+
+PHASE 5：
+
+Planner Adapter。
+
+
+PHASE 6：
+
+RequestBuilder / MCP。
+
+
+PHASE 7：
+
+删除旧 Parameter Collector 和重复 Profile。
+
+
+每个 Phase 必须包含：
+
+1. 修改文件
+
+2. 新增文件
+
+3. 删除文件
+
+4. 类/函数变化
+
+5. 数据结构变化
+
+6. 调用链变化
+
+7. 兼容性处理
+
+8. 测试计划
+
+9. 回滚风险
+
+10. 验收标准
+
+
+==================================================
+二十五、非常重要：先不要写代码
+==================================================
+
+第一阶段只做分析。
+
+请生成：
+
+PARAMETER_ENGINE_RUNTIME_REFACTOR_PLAN.md
+
+
+文档必须包含：
+
+1. Executive Summary
+
+2. Current Architecture
+
+3. Current Call Graph
+
+4. Current Data Model
+
+5. Current Parameter Flow
+
+6. Current Interaction Flow
+
+7. Duplicate Responsibility Analysis
+
+8. Target Architecture
+
+9. Responsibility Matrix
+
+10. Target Data Model
+
+11. Parameter Engine Lifecycle
+
+12. Multi-turn Collection Flow
+
+13. One-message-multiple-parameters Flow
+
+14. LLM Extraction Flow
+
+15. Resolver Flow
+
+16. Validation Flow
+
+17. InteractionIntent / InteractionRequest Flow
+
+18. Planner Integration
+
+19. Task Pause / Resume
+
+20. MCP Request Building
+
+21. Migration Phases
+
+22. File-level Change Plan
+
+23. Test Plan
+
+24. Compatibility Strategy
+
+25. Risks
+
+26. Acceptance Criteria
+
+
+==================================================
+二十六、验收原则
+==================================================
+
+最终必须满足：
+
+1. Parameter Definition 只有一个 Source of Truth。
+
+2. Parameter Engine 是 Runtime 内置能力。
+
+3. Planner 不负责参数收集细节。
+
+4. Skill 不负责多轮参数收集。
+
+5. Parameter Engine 支持一次输入多个参数。
+
+6. Parameter Engine 支持多轮参数补全。
+
+7. Parameter Engine 支持动态 JSON Schema。
+
+8. resourceContent 与 Base Parameter 使用统一 Parameter Tree。
+
+9. LLM 负责语义理解和参数 extraction。
+
+10. deterministic code 负责最终 validation。
+
+11. Tool 可以作为参数来源。
+
+12. fixed/context/user/tool/LLM inference 都可以成为参数来源。
+
+13. InteractionRequest 保留。
+
+14. InteractionRequest 不负责 Parameter Engine 逻辑。
+
+15. Parameter Engine 产生 InteractionIntent，而不是直接操作 UI。
+
+16. Planner 可以暂停/恢复 Task。
+
+17. 一个 Task 的 Parameter State 可以持久化。
+
+18. 不允许为具体资源类型增加大量 if/else 参数收集逻辑。
+
+19. 不允许创建第二套 Parameter Definition。
+
+20. 不为了“通用性”创建没有实际职责的 Profile / Adapter / Manager。
+
+
+==================================================
+最终要求
+==================================================
+
+请先阅读整个项目。
+
+不要假设现有代码结构。
+
+不要直接照抄上述目录。
+
+上述内容是目标架构和约束，不是要求机械实现。
+
+先分析：
+
+“当前系统是什么”
+
+再分析：
+
+“当前系统和目标架构差在哪里”
+
+最后给出：
+
+“最小改动、可渐进迁移的实施方案”。
+
+如果发现上述目标架构与现有代码存在冲突：
+
+不要强行实现。
+
+请明确指出冲突、原因以及推荐方案。
+
+特别检查是否已经存在：
+
+SkillParameterProfile
+
+RequestBuilderProfile
+
+DefaultParameterCollector
+
+InteractionRequest
+
+PublicInteraction
+
+如果发现这些对象职责重叠，请明确提出：
+
+KEEP / REFACTOR / REMOVE
+
+并说明理由。
+
+第一阶段禁止修改业务代码。
+
+只生成：
+
+PARAMETER_ENGINE_RUNTIME_REFACTOR_PLAN.md
