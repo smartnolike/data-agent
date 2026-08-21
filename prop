@@ -1,0 +1,29 @@
+当前 Agent Execution Status 的整体方向已经正确，请不要重新设计或重构，只进行一轮视觉和交互细化。
+
+1. 保留现在 “Completed in X.Xs” 的位置、折叠交互和整体样式。
+
+2. 优化展开后的 execution steps：
+
+- 当前绿色圆形 check icon 太大，请明显缩小。
+
+- timeline connector line 更细、更淡。
+
+- 弱化或移除 steps 外层 Card 的明显边框。
+
+- steps 字体比 Assistant 最终回答正文小一级。
+
+- 减少 step 之间的垂直间距。
+
+- 整体保持 compact、subtle。
+
+- Execution Steps 的视觉优先级必须低于最终回答。
+
+3. 不要为了展示 Timeline 而创建通用的假步骤。
+
+例如：
+
+- Request understood
+
+- Preparing the answer
+
+如果这些不是后端真实 execution event，
