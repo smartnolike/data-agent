@@ -3,3 +3,8 @@ kubectl get crd sandboxclaims.extensions.agents.x-k8s.io \
 
 
 kubectl api-resources --api-group=extensions.agents.x-k8s.io
+
+
+kubectl get deploy -A \
+  -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,IMAGE:.spec.template.spec.containers[*].image' \
+  | grep -i sandbox
