@@ -8,3 +8,10 @@ kubectl api-resources --api-group=extensions.agents.x-k8s.io
 kubectl get deploy -A \
   -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,IMAGE:.spec.template.spec.containers[*].image' \
   | grep -i sandbox
+
+
+
+kubectl -n danaan-gcp-portal patch deployment \
+  danaan-agent-sandbox-router \
+  --type='merge' \
+  -p '{"spec":{"template":{"metadata":{"labels":{"app":"sandbox-router"}}}}}'
