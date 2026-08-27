@@ -15,3 +15,9 @@ kubectl -n danaan-gcp-portal patch deployment \
   danaan-agent-sandbox-router \
   --type='merge' \
   -p '{"spec":{"template":{"metadata":{"labels":{"app":"sandbox-router"}}}}}'
+
+
+kubectl -n danaan-gcp-portal patch sandboxwarmpool \
+  danaan-agent-sandbox-warmpool \
+  --type merge \
+  -p '{"spec":{"replicas":2}}'
