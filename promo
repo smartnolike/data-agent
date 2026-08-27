@@ -21,3 +21,7 @@ kubectl -n danaan-gcp-portal patch sandboxwarmpool \
   danaan-agent-sandbox-warmpool \
   --type merge \
   -p '{"spec":{"replicas":2}}'
+
+
+kubectl -n danaan-gcp-portal get pod <剩下的Pod名称> \
+  -o jsonpath='{range .metadata.ownerReferences[*]}{.kind}{" / "}{.name}{"\n"}{end}'
