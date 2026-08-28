@@ -1,5 +1,7 @@
 
 
+
+
 kubectl get crd sandboxclaims.extensions.agents.x-k8s.io \
   -o jsonpath='{range .spec.versions[*]}{.name}{" served="}{.served}{" storage="}{.storage}{"\n"}{end}'
 
@@ -10,6 +12,8 @@ kubectl api-resources --api-group=extensions.agents.x-k8s.io
 kubectl get deploy -A \
   -o custom-columns='NAMESPACE:.metadata.namespace,NAME:.metadata.name,IMAGE:.spec.template.spec.containers[*].image' \
   | grep -i sandbox
+
+
 
 
 
@@ -43,3 +47,9 @@ gcloud container node-pools describe <SANDBOX_NODE_POOL> \
 curl -v \
   -H "Metadata-Flavor: Google" \
   http://metadata.google.internal/computeMetadata/v1/
+
+
+
+kubectl -n danaan-gcp-portal exec \
+  danaan-agent-sandbox-warmpool-9q2cd -- \
+  python3.12 -c "import socket; print(socket.create_connection(('127.0.0.1', 38087), timeout=3))"
