@@ -1,4 +1,5 @@
-
+kubectl -n danaan-gcp-portal exec danaan-agent-sandbox-router-xxxx -- \
+  python -c "import socket; print(socket.create_connection(('danaan-agent-sandbox-warmpool-9q2cd.danaan-gcp-portal.svc.cluster.local', 38087), timeout=3))"
 
 
 
