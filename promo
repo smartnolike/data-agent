@@ -1,3 +1,5 @@
+
+
 kubectl get crd sandboxclaims.extensions.agents.x-k8s.io \
   -o jsonpath='{range .spec.versions[*]}{.name}{" served="}{.served}{" storage="}{.storage}{"\n"}{end}'
 
@@ -25,3 +27,19 @@ kubectl -n danaan-gcp-portal patch sandboxwarmpool \
 
 kubectl -n danaan-gcp-portal get pod <剩下的Pod名称> \
   -o jsonpath='{range .metadata.ownerReferences[*]}{.kind}{" / "}{.name}{"\n"}{end}'
+
+
+
+gcloud container clusters describe <CLUSTER_NAME> \
+  --location <LOCATION> \
+  --format="value(networkConfig.datapathProvider)"
+
+
+gcloud container node-pools describe <SANDBOX_NODE_POOL> \
+  --cluster <CLUSTER_NAME> \
+  --location <LOCATION> \
+  --format="value(config.workloadMetadataConfig.mode)"
+
+curl -v \
+  -H "Metadata-Flavor: Google" \
+  http://metadata.google.internal/computeMetadata/v1/
