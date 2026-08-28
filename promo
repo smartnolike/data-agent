@@ -1,3 +1,18 @@
+kubectl -n danaan-gcp-portal get pod danaan-agent-sandbox-warmpool-9q2cd -o wide
+
+kubectl -n danaan-gcp-portal get svc danaan-agent-sandbox-warmpool-9q2cd -o yaml
+
+kubectl -n danaan-gcp-portal get endpointslice \
+  -l kubernetes.io/service-name=danaan-agent-sandbox-warmpool-9q2cd -o yaml
+
+kubectl -n danaan-gcp-portal exec danaan-agent-sandbox-router-5899d675f9-ksdmc -- \
+  python -c "import socket; print(socket.create_connection(('<RUNTIME_POD_IP>', 38087), timeout=3))"
+
+kubectl -n danaan-gcp-portal describe networkpolicy danaan-agent-sandbox-template-network-policy
+
+kubectl -n danaan-gcp-portal get networkpolicy
+
+
 kubectl -n danaan-gcp-portal exec danaan-agent-sandbox-router-xxxx -- \
   python -c "import socket; print(socket.create_connection(('danaan-agent-sandbox-warmpool-9q2cd.danaan-gcp-portal.svc.cluster.local', 38087), timeout=3))"
 
