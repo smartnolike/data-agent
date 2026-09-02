@@ -1,3 +1,4 @@
+
 kubectl get backendconfig gcp-portal-ai-agent-backendconfig \
 -n danann-gcp-portal -o yaml
 
@@ -22,3 +23,17 @@ kubectl describe ingress danann-service-ingress -n danann-gcp-portal
 kubectl describe svc gcp-portal-ai-agent -n danann-gcp-portal
 kubectl describe backendconfig gcp-portal-ai-agent-backendconfig -n danann-gcp-portal
 gcloud compute backend-services describe ...
+
+
+
+gcloud compute backend-services list \
+  --filter="name~'gcp-portal-ai-agent'"
+
+gcloud compute backend-services describe <BACKEND_NAME> \
+  --region=<你的region> \
+  --format="yaml(name,timeoutSec,protocol)"
+
+
+time curl -v \
+  http://gcp-portal-ai-agent:80/agent/你的接口
+
