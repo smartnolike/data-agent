@@ -1,4 +1,9 @@
-
+curl -N -v \
+  -X POST \
+  'https://你的域名/api/agent/api/conversations/xxx/messages' \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer xxx' \
+  --data '{...}'
 kubectl get backendconfig gcp-portal-ai-agent-backendconfig \
 -n danann-gcp-portal -o yaml
 
