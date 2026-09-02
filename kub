@@ -37,3 +37,31 @@ gcloud compute backend-services describe <BACKEND_NAME> \
 time curl -v \
   http://gcp-portal-ai-agent:80/agent/你的接口
 
+kubectl get ingress danann-service-ingress \
+-n danann-gcp-portal -o wide
+
+nslookup danann.hsbc-10726045-wsbaaphk01-dev.dev.gcp.cloud.hk.hsbc
+
+gcloud compute forwarding-rules list \
+--filter="IPAddress=<INGRESS_IP>"
+
+gcloud compute forwarding-rules describe <FORWARDING_RULE> \
+--region=<REGION>
+
+gcloud compute target-https-proxies describe <TARGET_HTTPS_PROXY> \
+--region=<REGION>
+
+gcloud compute url-maps describe <URL_MAP> \
+--region=<REGION>
+
+gcloud compute backend-services describe \
+k8s1-5c343a16-danann-gcp-portal-gcp-portal-ai-agent-80-3fa7847c \
+--region=<REGION> \
+--format="yaml(name,timeoutSec)"
+
+import asyncio
+
+@app.get("/agent/test-timeout")
+async def test_timeout():
+    await asyncio.sleep(45)
+    return {"message": "45 seconds success"}
