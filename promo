@@ -69,3 +69,24 @@ curl -v \
 kubectl -n danaan-gcp-portal exec \
   danaan-agent-sandbox-warmpool-9q2cd -- \
   python3.12 -c "import socket; print(socket.create_connection(('127.0.0.1', 38087), timeout=3))"
+
+
+
+
+NS=danann-gcp-portal
+ING=danann-service-ingress
+SVC=gcp-portal-ai-agent
+
+kubectl -n "$NS" get backendconfig gcp-portal-ai-agent-backendconfig -o yaml
+kubectl -n "$NS" get svc "$SVC" \
+  -o jsonpath='{.metadata.annotations.cloud\.google\.com/backend-config}{"\n"}'
+
+kubectl -n "$NS" get ingress "$ING" \
+  -o jsonpath='{.metadata.annotations.ingress\.kubernetes\.io/backends}{"\n"}'
+
+kubectl -n "$NS" describe ingress "$ING"
+
+
+gcloud compute backend-services describe <BackendService名称> \
+  --region=<集群所在region> \
+  --format='yaml(name,timeoutSec,healthChecks)'
