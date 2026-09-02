@@ -1,0 +1,24 @@
+kubectl get backendconfig gcp-portal-ai-agent-backendconfig \
+-n danann-gcp-portal -o yaml
+
+
+kubectl get svc gcp-portal-ai-agent \
+-n danann-gcp-portal -o yaml
+
+kubectl describe ingress danann-service-ingress \
+-n danann-gcp-portal
+
+
+gcloud compute backend-services list \
+--filter="name~gcp-portal-ai-agent"
+
+
+gcloud compute backend-services describe <BACKEND_SERVICE_NAME> \
+--region=<你的region>
+
+
+kubectl describe ingress danann-service-ingress -n danann-gcp-portal
+
+kubectl describe svc gcp-portal-ai-agent -n danann-gcp-portal
+kubectl describe backendconfig gcp-portal-ai-agent-backendconfig -n danann-gcp-portal
+gcloud compute backend-services describe ...
