@@ -90,3 +90,8 @@ kubectl -n "$NS" describe ingress "$ING"
 gcloud compute backend-services describe <BackendService名称> \
   --region=<集群所在region> \
   --format='yaml(name,timeoutSec,healthChecks)'
+
+
+gcloud compute backend-services update <名称> \
+  --region=<GKE所在Region> \
+  --timeout=600s
