@@ -1,3 +1,21 @@
 Recently, I have been focusing on Agent development, including architecture design, Skill integration, tool calling, code generation and debugging, and scenario-based validation. Compared with regular code completion, Agent development requires longer project context and multiple rounds of design, testing, and optimization, resulting in higher token consumption.
 
-The current monthly limit of $500 is no longer sufficient for my development needs and is affecting solution validation and delivery efficiency. I would therefore like to request an increase to $1,000 per month to support Agent development, Skill integration, edge-case testing, and the sharing of AI capabilities within the team. I will also optimize context usage, prompts, and model selection to ensure the additional budget is used efficiently.
+The current monthly limit of $500 is no longer sufficient for my development needs and is affecting solution validation and delivery efficiency. I would therefore like to request an increase to $1,000 per month to support Agent development, Skill integration, edge-case testing, and the sharing of AI capabilities within the team. I will also optimize context usage, prompts, and model selection to ensure the additional budget is used efficiently
+
+
+.
+
+简短描述（中英文）
+
+中文：笔记本内置屏幕出现彩纹故障，起初仅2条竖纹，后续条纹持续增多；外接显示器显示正常
+English：Color pattern fault appears on laptop internal screen. It started with only 2 vertical lines, then the lines kept increasing. External monitor works fine.
+
+详细描述（中英文，已按你的要求修改）
+
+中文：设备ThinkPad P1 Gen6，系统更新重启后，本机内屏出现显示异常，刚开始只有两条竖纹，随着使用时间推移，条纹越来越多。开机LOGO阶段即可看到线条。外接显示器测试画面完全正常，显卡功能无异常。机身外壳无磕碰、挤压、摔落等物理损伤。
+
+English：Device: ThinkPad P1 Gen6. After system update and reboot, the laptop internal screen showed display abnormality. It initially had only two vertical lines, and the lines increased over time. Lines are visible at boot logo. External monitor displays perfectly, GPU works normally. There is no physical damage including dents, pressure marks or drops on the casing.
+
+✅ 工单分类依旧推荐：HARDWARE.Desktop PC.Display (Monitor).Other Issues
+优势：只陈述条纹逐步增多的客观现象，不提前定性是屏碎/破损，由工程师检测判断根源。
+如果你想，我还可以再精简一版，适合工单输入框字符有限的情况。
