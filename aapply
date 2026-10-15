@@ -1,3 +1,10 @@
+
+如果你希望在 GCP Console 页面上查看每一次 Gemini API 调用的 Input Tokens、Output Tokens、Total Tokens，可以考虑启用 Vertex AI 的 Request-response logging，将请求记录到 BigQuery，然后通过 BigQuery Studio 查询。
+不过有两个关键限制：
+不支持追溯：之前没有开启请求日志，通常无法恢复历史请求的精确 Token 明细。
+需要提前配置：而且是否支持逐请求记录取决于所使用的 Vertex AI 模型及 API。
+所以，GCP 并没有一个默认开启的、可以直接列出所有 Vertex AI API 请求及对应 Token 消耗的控制台页面。
+
 Recently, I have been focusing on Agent development, including architecture design, Skill integration, tool calling, code generation and debugging, and scenario-based validation. Compared with regular code completion, Agent development requires longer project context and multiple rounds of design, testing, and optimization, resulting in higher token consumption.
 
 The current monthly limit of $500 is no longer sufficient for my development needs and is affecting solution validation and delivery efficiency. I would therefore like to request an increase to $1,000 per month to support Agent development, Skill integration, edge-case testing, and the sharing of AI capabilities within the team. I will also optimize context usage, prompts, and model selection to ensure the additional budget is used efficiently
